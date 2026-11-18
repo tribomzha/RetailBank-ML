@@ -1,0 +1,44 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam dpi 200
+skinparam defaultFontName DejaVu Sans
+skinparam wrapWidth 200
+skinparam maxMessageSize 150
+skinparam nodesep 40
+skinparam ranksep 55
+UpdateSystemBoundaryStyle($borderStyle=SolidLine())
+UpdateBoundaryStyle("enterprise", $borderStyle=SolidLine())
+AddBoundaryTag("trust", $borderColor="#B45309", $fontColor="#92400E", $borderStyle=DashedLine(), $borderThickness=2)
+AddElementTag("mixed", $bgColor="#0F766E", $borderColor="#115E59", $fontColor="#FFFFFF")
+title RetailBank / №1 / C4 Container\nПриоритизация ручной проверки
+Enterprise_Boundary(bank, "Внутренний контур RetailBank") {
+  Boundary(release_domain, "[4] Внутренний контур релизов", $tags="trust") {
+    System(registry, "Внутренний реестр релизов", "Одобренные сборки и локальные версии модели")
+  }
+  Boundary(ops_domain, "[1] Домен расчётных данных", $tags="trust") {
+    System(ops, "Операционная система и архив", "Операции, история, время события и загрузки")
+  }
+  System_Boundary(ai, "Сервис приоритизации №1") {
+    Container(batch, "A1. Суточный расчёт", "Python batch: код + локальная модель", "Признаки, балл, проверки, проект очереди", $tags="mixed")
+    ContainerDb(snap, "A3. Снимки", "Parquet / объектное хранилище", "Признаки на срезе, ссылки на источники, контрольная выборка")
+    ContainerDb(state, "A4. Реестр и очередь заданий", "PostgreSQL", "job_queue, прогоны, результаты, outbox, экспертные исходы")
+    Container(api, "A2. API рекомендаций", "Java / Spring Boot", "Публикация версии порядка, возврат к baseline, приём исходов")
+  }
+  Boundary(case_domain, "[3] Домен решений финмониторинга", $tags="trust") {
+    System(cases, "Действующая система финмониторинга", "Сигналы и сроки ПВК; очередь дел; решения; текущий порядок")
+    Person(expert, "Сотрудник финмониторинга", "Разбор, обоснование, действие по действующей процедуре")
+  }
+}
+Rel(registry, batch, "Версия кода, модели и профиля", "Пакет релиза / при развёртывании")
+Rel(ops, batch, "Разрешённая история на срезе", "Пакетный экспорт")
+Rel(batch, snap, "Читает и фиксирует снимок", "Object API")
+Rel(batch, state, "Берёт job; пишет staging и outbox", "SQL")
+Rel(api, state, "Создаёт job; публикует целый run", "SQL / транзакция")
+Rel(api, cases, "Читает сигналы и ПВК; передаёт рекомендацию", "REST / версии")
+Rel(cases, api, "Экспертный ответ и поздние исходы", "REST / event ID")
+Rel(expert, cases, "Разбирает дело и подтверждает действие", "Рабочее место")
+Lay_R(batch, snap)
+Lay_R(api, state)
+caption Синий: код / данные. Зелёный: обучаемый метод. Пунктир [n]: граница доверия.
+@enduml

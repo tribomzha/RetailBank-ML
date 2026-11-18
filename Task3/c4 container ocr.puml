@@ -1,0 +1,47 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam dpi 200
+skinparam defaultFontName DejaVu Sans
+skinparam wrapWidth 185
+skinparam maxMessageSize 145
+skinparam nodesep 35
+skinparam ranksep 45
+UpdateSystemBoundaryStyle($borderStyle=SolidLine())
+UpdateBoundaryStyle("enterprise", $borderStyle=SolidLine())
+AddBoundaryTag("trust", $borderColor="#B45309", $fontColor="#92400E", $borderStyle=DashedLine(), $borderThickness=2)
+AddElementTag("model", $bgColor="#0F766E", $borderColor="#115E59", $fontColor="#FFFFFF")
+title RetailBank / №2 / C4 Container\nОцифровка кредитных документов
+Boundary(client_domain, "[5] Внешний клиент", $tags="trust") {
+  Person_Ext(client, "Заявитель", "Загружает файл или новую версию")
+}
+Enterprise_Boundary(bank, "Внутренний кредитный контур RetailBank") {
+  System(dossier, "Кредитный портал и досье", "Приём, неизменяемый оригинал, версии и права на заявку")
+  Boundary(release_domain, "[4] Внутренний контур релизов", $tags="trust") {
+    System(registry, "Внутренний реестр релизов", "Одобренные локальные OCR и парсеры")
+  }
+  System_Boundary(ocr, "Сервис оцифровки №2") {
+    Container(api, "O1. API и валидация текста", "Java / Spring Boot", "Задание; проверка страниц, блоков и координат; версия текста")
+    ContainerDb(queue, "O2. Реестр и очередь заданий", "PostgreSQL", "Задачи документов; lease; ошибки; состояния сверки")
+    Boundary(sandbox, "[6] Недоверенный результат чтения", $tags="trust") {
+      Container(worker, "O3. Внутренний OCR-worker", "Локальный OCR + парсер PDF", "Нативный текст либо один OCR; текст и координаты", $tags="model")
+    }
+    ContainerDb(texts, "O4. Версии текста", "Объектное хранилище", "Блоки; привязки к оригиналу; исправления и приёмка")
+  }
+  System(workplace, "Рабочее место кредитных операций", "Существующая задача сверки рядом с оригиналом")
+  Person(operator, "Сотрудник кредитных операций", "Проверяет критичные зоны и спорные места")
+  System(extraction, "Извлечение показателей №18", "Использует принятую версию текста")
+}
+Rel(client, dossier, "Файл кредитной заявки", "HTTPS")
+Rel(registry, worker, "Одобренная сборка", "Пакет релиза / при развёртывании")
+Rel(dossier, api, "ID и версия документа", "REST / idempotency key")
+Rel(api, queue, "Создаёт job; читает результат", "SQL")
+Rel(worker, queue, "Берёт lease; пишет результат job", "SQL / ограниченная роль")
+Rel(worker, dossier, "Получает оригинал по ID", "Object API / разрешённый объект")
+Rel(api, texts, "Сохраняет проверенную структуру", "Object API")
+Rel(workplace, api, "Читает черновик; подтверждает исправления", "REST / версия")
+Rel(operator, workplace, "Сверяет страницу", "Интерфейс досье")
+Rel(workplace, dossier, "Открывает оригинал", "По правам заявки")
+Rel(extraction, api, "Получает принятую версию и ссылки", "REST / версия")
+caption Синий: код / данные. Зелёный: обучаемый метод. Пунктир [n]: граница доверия.
+@enduml

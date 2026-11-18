@@ -1,0 +1,43 @@
+@startuml
+!include <C4/C4_Component>
+LAYOUT_TOP_DOWN()
+skinparam dpi 200
+skinparam defaultFontName DejaVu Sans
+skinparam wrapWidth 190
+skinparam maxMessageSize 135
+skinparam nodesep 35
+skinparam ranksep 50
+UpdateContainerBoundaryStyle($borderStyle=SolidLine())
+UpdateBoundaryStyle("enterprise", $borderStyle=SolidLine())
+AddBoundaryTag("trust", $borderColor="#B45309", $fontColor="#92400E", $borderStyle=DashedLine(), $borderThickness=2)
+AddElementTag("model", $bgColor="#0F766E", $borderColor="#115E59", $fontColor="#FFFFFF")
+title RetailBank / №1 / C4 Component\nКонтейнер A1 «Суточный расчёт»
+Enterprise_Boundary(bank, "Внутренний контур RetailBank") {
+  Boundary(source_domain, "[1] Домен расчётных данных", $tags="trust") {
+    System(ops, "Операционная система и архив", "Версионная история на срезе")
+  }
+  ContainerDb(snap, "A3. Снимки", "Parquet / Object API", "Признаки, provenance, выборка контроля")
+  ContainerDb(state, "A4. Реестр и задания", "PostgreSQL", "Снимок сигналов и ПВК от A2; staging / outbox")
+  Container_Boundary(worker, "A1. Суточный расчёт / один процесс Python") {
+    Component(job, "A1.1 Управление прогоном", "Код", "Срез, lease, повторы, версии, дедупликация")
+    Component(features, "A1.2 Подготовка признаков", "Код", "Point-in-time; полнота; область применения; выборка контроля")
+    Boundary(model_boundary, "[2] Выход обучаемого метода", $tags="trust") {
+      Component(model, "A1.3 Внутренний ранжировщик", "Профиль процентилей ИЛИ Isolation Forest", "Локальное исполнение; числовой балл", $tags="model")
+    }
+    Component(cal, "A1.4 Проверка и шкала", "Код + фиксированный профиль", "Конечное число; направление; референсная шкала; отказ")
+    Component(policy, "A1.5 Политика очереди", "Код", "ПВК; эпизоды; бюджет K; baseline; сроки; зона воздержания")
+    Component(publish, "A1.6 Контракт и staging", "Код", "Источники; полная версия; идемпотентная запись")
+  }
+  Rel(state, job, "Задание и снимок допустимых дел", "SQL")
+  Rel(job, features, "Запускает фиксированный срез", "Вызов")
+  Rel(features, ops, "Читает разрешённые записи", "Экспорт")
+  Rel(features, snap, "Записывает снимок и provenance", "Object API")
+  Rel(features, model, "Только валидные признаки", "В памяти")
+  Rel(model, cal, "raw_score", "В памяти")
+  Rel(features, policy, "Отказы и исходный порядок", "В памяти")
+  Rel(cal, policy, "priority_score или ABSTAIN", "В памяти")
+  Rel(policy, publish, "Проект очереди и причины", "В памяти")
+  Rel(publish, state, "Атомарный staging + outbox", "SQL")
+}
+caption Синий: код / данные. Зелёный: обучаемый метод. Пунктир [n]: граница доверия.
+@enduml

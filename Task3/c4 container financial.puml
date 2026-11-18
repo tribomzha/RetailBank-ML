@@ -1,0 +1,53 @@
+@startuml
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam dpi 200
+skinparam defaultFontName DejaVu Sans
+skinparam wrapWidth 185
+skinparam maxMessageSize 140
+skinparam nodesep 35
+skinparam ranksep 50
+UpdateSystemBoundaryStyle($borderStyle=SolidLine())
+UpdateBoundaryStyle("enterprise", $borderStyle=SolidLine())
+AddBoundaryTag("trust", $borderColor="#B45309", $fontColor="#92400E", $borderStyle=DashedLine(), $borderThickness=2)
+AddElementTag("model", $bgColor="#0F766E", $borderColor="#115E59", $fontColor="#FFFFFF")
+title RetailBank / №18 / C4 Container\nФинансовая карточка с доказательными источниками
+Boundary(client_domain, "[5] Внешний клиент", $tags="trust") {
+  Person_Ext(client, "Заявитель", "Документы и свободный текст")
+}
+Enterprise_Boundary(bank, "Внутренний кредитный контур RetailBank") {
+  System(dossier, "Кредитный портал и досье", "Оригиналы, версии пакета, права на заявку")
+  System(ocr, "Оцифровка №2", "Проверенный текст скана с координатами")
+  Boundary(release_domain, "[4] Внутренний контур релизов", $tags="trust") {
+    System(registry, "Внутренний реестр релизов", "Одобренные локальные модели и обвязка")
+  }
+  System_Boundary(fin, "Сервис извлечения №18") {
+    Container(api, "F1. API, проверки и карточка", "Java / Spring Boot", "Задания; схемы; числа и единицы; конфликты; принятие версии")
+    ContainerDb(state, "F2. Реестр и контекст пакета", "PostgreSQL / JSONB", "job_queue; ячейки; источники; черновики; подтверждения")
+    Boundary(parser_boundary, "[9] Недоверенное чтение файла", $tags="trust") {
+      Container(context, "F3. Подготовка контекста", "Изолированный код / парсеры", "Excel и PDF; строки и шапки; словарь; локаторы источников")
+    }
+    Boundary(model_boundary, "[7] Контекст и ответ модели", $tags="trust") {
+      Container(model, "F4. Внутренняя модель извлечения", "Локально: E5 + парсер ИЛИ Qwen", "Один выбранный тракт; фрагменты или ID ячеек", $tags="model")
+    }
+  }
+  Boundary(credit_domain, "[8] Принятие в кредитный процесс", $tags="trust") {
+    System(workplace, "Действующая кредитная система", "Рабочее место; принятая карточка; финансовый анализ")
+    Person(underwriter, "Андеррайтер", "Проверяет значения и разрешает конфликты")
+  }
+}
+Rel(client, dossier, "Пакет или новая версия", "HTTPS")
+Rel(registry, model, "Одобренный релиз", "Пакет релиза / при развёртывании")
+Rel(dossier, api, "ID и версия пакета", "REST")
+Rel(api, state, "Задания, черновик, подтверждения", "SQL")
+Rel(context, dossier, "Получает разрешённые Excel / PDF", "Object API")
+Rel(context, ocr, "Получает принятую версию для скана", "REST")
+Rel(context, state, "Берёт job; пишет контекст", "SQL / контракт")
+Rel(api, model, "Контекст одной заявки и список полей", "Внутренний RPC / job")
+Rel(model, api, "Фрагменты или ID; отказ", "JSON")
+Rel(workplace, api, "Читает черновик; принимает текущую версию", "REST / CAS")
+Rel(api, workplace, "Только принятую карточку", "Outbox / event ID")
+Rel(underwriter, workplace, "Сверяет источники и подтверждает", "Рабочее место")
+Rel(workplace, dossier, "Открывает первоисточник", "По правам заявки")
+caption Синий: код / данные. Зелёный: обучаемый метод. Пунктир [n]: граница доверия.
+@enduml
